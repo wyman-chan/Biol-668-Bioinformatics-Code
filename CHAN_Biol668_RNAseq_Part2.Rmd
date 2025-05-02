@@ -1,0 +1,246 @@
+---
+title: "RNA Seq Part 2"
+output: RNA_seq_p2
+---
+
+*Run* button within the chunk or by pressing *Cmd+Shift+Enter*. 
+
+*Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+```{r}
+library( "DESeq2" )
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+# define the path to the file
+# note this path is relative to the current working directory and the files are stored in a folder called data
+dmso1_data_file_path <- 'rna_counts_data.csv'
+# read in the file
+dmso_1_count_data <- read.csv(dmso1_data_file_path, header = TRUE)
+# show the first few lines
+head(dmso_1_count_data)
+```
+#renames the second column to DMS0_1
+```{r}
+colnames(dmso_1_count_data)[2] ="DMSO_1"
+```
+
+#loads new csv and renames the second column to DMS0_2
+```{r}
+dmso_2_count_data <- read.csv('rna_counts_data.csv', header = TRUE)
+colnames(dmso_2_count_data)[2] ="DMSO_2"
+```
+
+#loads new csv and renames the second column to TCMOH_1
+```{r}
+tcpmoh_1_count_data <- read.csv('rna_counts_data.csv', header = TRUE)
+colnames(tcpmoh_1_count_data)[2] ="TCPMOH_1"
+```
+
+#loads new csv and renames the second column to TCMOH_2
+```{r}
+tcpmoh_2_count_data <- read.csv('rna_counts_data.csv', header = TRUE)
+colnames(tcpmoh_2_count_data)[2] ="TCPMOH_2"
+```
+
+#creates a list of the data frames from all four csvs
+```{r}
+df_list <- list(dmso_1_count_data, dmso_2_count_data, tcpmoh_1_count_data, tcpmoh_2_count_data)
+```
+
+#Merges all the data in teh list into a data frame
+```{r}
+count_data <- df_list %>% reduce(full_join, by='Geneid')
+```
+
+#removes row names and replaces with geneid
+```{r}
+count_data <- count_data %>% remove_rownames %>% column_to_rownames(var="Geneid")
+head(count_data)
+```
+
+#creates a table for the metadata of the samples linking sample to its condition
+```{r}
+# get the sample names from the count_data matrix
+SampleName <- c(colnames(count_data))
+# specify the conditions for each sample
+# In my sample names, DMSO_1 and DMSO_2 are control replicated and TCPMOH_1 and TCPMOH_2 are treated replicates
+condition <- c("control", "control", "treated", "treated")
+# generate the metadata data frame
+meta_data <- data.frame(SampleName, condition)
+# make the sample name the row id
+meta_data <- meta_data %>% remove_rownames %>% column_to_rownames(var="SampleName")
+meta_data
+```
+
+#ensures that sample names both in count_data and meta_data 
+```{r}
+all(colnames(count_data) %in% rownames(meta_data))
+```
+
+#ensures that sample names are in the same order in both count_data and meta_data 
+```{r}
+all(colnames(count_data) == rownames(meta_data))
+```
+
+```{r}
+# create deseq data set object
+dds <- DESeqDataSetFromMatrix(countData = count_data,
+                              colData = meta_data,
+                              design = ~ condition)
+#outputs data set
+dds
+```
+
+#filters then outputs new counts
+```{r}
+# filter any counts less than 10
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds
+```
+
+```{r}
+# set the reference to be the control
+dds$condition <- relevel(dds$condition, ref = 'control')
+```
+
+```{r}
+# get normalized counts
+dds <- estimateSizeFactors(dds)
+normalized_counts <- counts(dds, normalized = TRUE)
+
+# If you would like to write the normalized counts to a file, you can run the following command. Note that you need to specify the file path. 
+# write.table(normalized_counts, file=normalized_counts_data_file_path, sep = '\t', quote=F, col.names = NA)
+```
+
+#runs the differential expression pipline
+```{r}
+dds <- DESeq(dds)
+res <- results(dds)
+res
+```
+
+#summarizes the statistics of the results
+```{r}
+summary(res)
+```
+
+#counts the number of significantly differentially expressed genes below 0.1
+```{r}
+sum(res$padj < 0.1, na.rm=TRUE)
+```
+
+#counts the number of significantly differentially expressed genes below 0.05
+```{r}
+sum(res$padj < 0.05, na.rm=TRUE)
+```
+
+```{r}
+# convert results data to basic dataframe
+data <- data.frame(res)
+head(data)
+```
+
+#applies variance stabilizing transformation and creates PCA
+```{r}
+rld <- vst(dds)
+plotPCA(rld)
+```
+
+```{r}
+# add an additional column that identifies a gene as unregulated, downregulated, or unchanged
+# note the choice of pvalue and log2FoldChange cutoff. 
+data <- data %>%
+  mutate(
+  Expression = case_when(log2FoldChange >= log(1) & padj <= 0.05 ~ "Up-regulated",
+  log2FoldChange <= -log(1) & padj <= 0.05 ~ "Down-regulated",
+  TRUE ~ "Unchanged")
+  )
+head(data)
+```
+
+```{r}
+top <- 10
+# we are getting the top 10 up and down regulated genes by filtering the column Up-regulated and Down-regulated and sorting by the adjusted p-value. 
+top_genes <- bind_rows(
+  data %>%
+  filter(Expression == 'Up-regulated') %>%
+  arrange(padj, desc(abs(log2FoldChange))) %>%
+  head(top),
+  data %>%
+  filter(Expression == 'Down-regulated') %>%
+  arrange(padj, desc(abs(log2FoldChange))) %>%
+  head(top)
+  )
+# create a datframe just holding the top 10 genes
+Top_Hits = head(arrange(data,pvalue),10)
+Top_Hits
+```
+
+# basic volcano plot showing log2 change vs -log10 change
+```{r}
+data$label = if_else(rownames(data) %in% rownames(Top_Hits), rownames(data), "")
+p1 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
+geom_point( size = 2/5) +
+xlab(expression("log"[2]*"FC")) +
+ylab(expression("-log"[10]*"P-Value")) +
+xlim(-4.5, 4.5)
+p1
+```
+
+```{r}
+# basic plot with line + red for p < 0.05
+p2 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
+geom_point(aes(color = Expression), size = 2/5) +
+#geom_hline(yintercept= -log10(0.05), linetype="dashed", linewidth = .4) +
+xlab(expression("log"[2]*"FC")) +
+ylab(expression("-log"[10]*"P-Value")) +
+scale_color_manual(values = c("firebrick3", "black", "firebrick3")) +
+xlim(-4.5, 4.5) +
+theme(legend.position = "none")
+p2
+```
+
+```{r}
+# with labels for top 10 sig overall
+library(ggrepel)
+p3 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
+geom_point(aes(color = Expression), size = 2/5) +
+# geom_hline(yintercept=-log10(0.05), linetype="dashed", linewidth = .4) +
+xlab(expression("log"[2]*"FC")) +
+ylab(expression("-log"[10]*"P-Value")) +
+scale_color_manual(values = c("firebrick3", "black", "firebrick3")) +
+xlim(-4.5, 4.5) +
+theme(legend.position = "none") +
+geom_text_repel(aes(label = label), size = 2.5)
+p3
+```
+
+```{r}
+# plot with up/down
+p4 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
+geom_point(aes(color = Expression), size = 2/5) +
+#geom_hline(yintercept=-log10(0.05), linetype="dashed", linewidth = .4) +
+xlab(expression("log"[2]*"FC")) +
+ylab(expression("-log"[10]*"P-Value")) +
+scale_color_manual(values = c("dodgerblue3", "black", "firebrick3")) +
+xlim(-4.5, 4.5)
+p4
+```
+
+#final version of volcano plot with gene labels and finalized styling
+```{r}
+p5 <- ggplot(data, aes(log2FoldChange, -log(pvalue,10))) + # -log10 conversion
+geom_point(aes(color = Expression), size = 2/5) +
+# geom_hline(yintercept=-log10(0.05), linetype="dashed", linewidth = .4) +
+xlab(expression("log"[2]*"FC")) +
+ylab(expression("-log"[10]*"P-Value")) +
+scale_color_manual(values = c("dodgerblue3", "black", "firebrick3")) +
+xlim(-4.5, 4.5) +
+geom_text_repel(aes(label = label), size = 2.5)
+p5
+```
+

@@ -1,0 +1,320 @@
+---
+title: "RNA Seq Part 1"
+output: RNA_seq_p1
+---
+
+*Run* button within the chunk or by pressing *Cmd+Shift+Enter*. 
+
+*Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+#This assigns the downloadable file at this link to url
+#It uses utils to download the file, untar it and assign what is inside to a list called files.
+#It has a for loop to gunzip all of the .gz files
+```{r}
+url <- "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE63310&format=file"
+utils::download.file(url, destfile="GSE63310_RAW.tar", mode="wb") 
+utils::untar("GSE63310_RAW.tar", exdir = ".")
+files <- c("GSM1545535_10_6_5_11.txt", "GSM1545536_9_6_5_11.txt", "GSM1545538_purep53.txt",
+  "GSM1545539_JMS8-2.txt", "GSM1545540_JMS8-3.txt", "GSM1545541_JMS8-4.txt",
+  "GSM1545542_JMS8-5.txt", "GSM1545544_JMS9-P7c.txt", "GSM1545545_JMS9-P8c.txt")
+for(i in paste(files, ".gz", sep=""))
+  R.utils::gunzip(i, overwrite=TRUE)
+```
+#This assigns the files we downloaded to a list and creates a table which contains the unique ID, gene length, and gene count.
+```{r}
+files <- c("GSM1545535_10_6_5_11.txt", "GSM1545536_9_6_5_11.txt", 
+   "GSM1545538_purep53.txt", "GSM1545539_JMS8-2.txt", 
+   "GSM1545540_JMS8-3.txt", "GSM1545541_JMS8-4.txt", 
+   "GSM1545542_JMS8-5.txt", "GSM1545544_JMS9-P7c.txt", 
+   "GSM1545545_JMS9-P8c.txt")
+read.delim(files[1], nrow=5)
+```
+#This combines all nine files into a matrix and gives the class data.
+```{r}
+x <- readDGE(files, columns=c(1,3))
+class(x)
+```
+#This shows the matrix with 27,179 rows with unique Entrez gene identifiers (IDs) and nine columns for the individual files.
+```{r}
+dim(x)
+```
+#Extracts and prints character from the 12th column until the end
+```{r}
+samplenames <- substring(colnames(x), 12, nchar(colnames(x)))
+samplenames
+```
+
+#assigns the sample to an object then creates variables based on group categories and then adds them into sample information
+```{r}
+colnames(x) <- samplenames
+group <- as.factor(c("LP", "ML", "Basal", "Basal", "ML", "LP", 
+                     "Basal", "ML", "LP"))
+x$samples$group <- group
+lane <- as.factor(rep(c("L004","L006","L008"), c(3,4,2)))
+x$samples$lane <- lane
+x$samples
+```
+#Displays the first rows from only the columns of symbol and txchrom
+```{r}
+library(Mus.musculus)
+geneid <- rownames(x)
+genes <- select(Mus.musculus, keys=geneid, columns=c("SYMBOL", "TXCHROM"), 
+                keytype="ENTREZID")
+head(genes)
+```
+#removes rows with duplicated entrezid
+```{r}
+genes <- genes[!duplicated(genes$ENTREZID),]
+```
+
+#adds genes as a new column and displays the table
+```{r}
+x$genes <- genes
+x
+```
+
+#caculates the counters per million then calculates the log-transformed version
+```{r}
+cpm <- cpm(x)
+lcpm <- cpm(x, log=TRUE)
+```
+
+#finds the mean and median from countts per million then outputs the values
+```{r}
+L <- mean(x$samples$lib.size) * 1e-6
+M <- median(x$samples$lib.size) * 1e-6
+c(L, M)
+```
+
+#table of the log-transformed counts per million
+```{r}
+summary(lcpm)
+```
+
+#counts how many genes have zero counts in 9 samples
+```{r}
+table(rowSums(x$counts==0)==9)
+```
+
+#identifies genes with sufficient expression then assigns only those filtered genes into a new variable
+```{r}
+keep.exprs <- filterByExpr(x, group=group)
+x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+dim(x)
+```
+
+#graph of the log-CPM values before and after filtering
+```{r}
+lcpm.cutoff <- log2(10/M + 2/L)
+library(RColorBrewer)
+nsamples <- ncol(x)
+col <- brewer.pal(nsamples, "Paired")
+par(mfrow=c(1,2))
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.26), las=2, main="", xlab="")
+title(main="A. Raw data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+den <- density(lcpm[,i])
+lines(den$x, den$y, col=col[i], lwd=2)
+}
+legend("topright", samplenames, text.col=col, bty="n")
+lcpm <- cpm(x, log=TRUE)
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.26), las=2, main="", xlab="")
+title(main="B. Filtered data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+den <- density(lcpm[,i])
+lines(den$x, den$y, col=col[i], lwd=2)
+}
+legend("topright", samplenames, text.col=col, bty="n")
+```
+
+#calculates the normalization factors from the trimmed mean of M-values then displys the factors
+```{r}
+x <- calcNormFactors(x, method = "TMM")
+x$samples$norm.factors
+```
+
+#creates a copy of the object then sets all of the normalization values to 1 then scales the samples
+```{r}
+x2 <- x
+x2$samples$norm.factors <- 1
+x2$counts[,1] <- ceiling(x2$counts[,1]*0.05)
+x2$counts[,2] <- x2$counts[,2]*5
+```
+
+#This creates a box plot of log-CPM vlaues for each sample and applies the TMM normalization afterward
+```{r}
+par(mfrow=c(1,2))
+lcpm <- cpm(x2, log=TRUE)
+boxplot(lcpm, las=2, col=col, main="")
+title(main="A. Example: Unnormalised data",ylab="Log-cpm")
+x2 <- calcNormFactors(x2)  
+x2$samples$norm.factors
+```
+
+#This displays that box plot with the TMM normalization
+```{r}
+lcpm <- cpm(x2, log=TRUE)
+boxplot(lcpm, las=2, col=col, main="")
+title(main="B. Example: Normalised data",ylab="Log-cpm")
+```
+
+#This creates two plots that compares the log-CPM dataa of sequencing lanes and sample groups
+```{r}
+lcpm <- cpm(x, log=TRUE)
+par(mfrow=c(1,2))
+col.group <- group
+levels(col.group) <-  brewer.pal(nlevels(col.group), "Set1")
+col.group <- as.character(col.group)
+col.lane <- lane
+levels(col.lane) <-  brewer.pal(nlevels(col.lane), "Set2")
+col.lane <- as.character(col.lane)
+plotMDS(lcpm, labels=group, col=col.group)
+title(main="A. Sample groups")
+plotMDS(lcpm, labels=lane, col=col.lane, dim=c(3,4))
+title(main="B. Sequencing lanes")
+```
+
+#this plots the clustering, outliers, and batch effects
+```{r}
+library(Glimma)
+glMDSPlot(lcpm, labels=paste(group, lane, sep="_"), 
+          groups=x$samples[,c(2,5)], launch=FALSE)
+```
+
+#this creates a table of the group and lane like the differential expression anaylsis
+```{r}
+design <- model.matrix(~0+group+lane)
+colnames(design) <- gsub("group", "", colnames(design))
+design
+```
+
+#Creates a contrast matrix that compares expression between groups
+```{r}
+contr.matrix <- makeContrasts(
+   BasalvsLP = Basal-LP, 
+   BasalvsML = Basal - ML, 
+   LPvsML = LP - ML, 
+   levels = colnames(design))
+contr.matrix
+```
+
+#This uses the previously made tables to make a mean variance trend graph
+```{r}
+par(mfrow=c(1,2))
+v <- voom(x, design, plot=TRUE)
+v
+```
+#Plots the final version of the mean variance trend after applying the empirical Bayes moderation
+```{r}
+vfit <- lmFit(v, design)
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+plotSA(efit, main="Final model: Mean-variance trend")
+```
+
+#ouputs a table for the multiple test correction then counts how many genes fall into each category
+```{r}
+summary(decideTests(efit))
+```
+
+#applies the treat method then filters out statistically significant differences
+```{r}
+tfit <- treat(vfit, lfc=1)
+dt <- decideTests(tfit)
+summary(dt)
+```
+
+#returns the number of genes that are significantly differentially expressied in both contrasts
+```{r}
+de.common <- which(dt[,1]!=0 & dt[,2]!=0)
+length(de.common)
+```
+
+#prints the first 20 gene symbols from the data set
+```{r}
+head(tfit$genes$SYMBOL[de.common], n=20)
+```
+
+#creates a venn diagram that shows the contrast between shared and unique differntially expressed genes 
+```{r}
+vennDiagram(dt[,1:2], circle.col=c("turquoise", "salmon"))
+```
+
+#writes all results to a text file
+```{r}
+write.fit(tfit, dt, file="results.txt")
+```
+
+#find the top 6 genes ranked by p valuesafter filtering
+```{r}
+basal.vs.lp <- topTreat(tfit, coef=1, n=Inf)
+basal.vs.ml <- topTreat(tfit, coef=2, n=Inf)
+head(basal.vs.lp)
+```
+
+#displays the top 6 genes
+```{r}
+head(basal.vs.ml)
+```
+
+#creates a plot to visualize which genes are up and downregulated
+```{r}
+plotMD(tfit, column=1, status=dt[,1], main=colnames(tfit)[1], 
+       xlim=c(-8,13))
+```
+
+#creates a plot that highlights differentially expressed genes and adds gene labels
+```{r}
+glMDPlot(tfit, coef=1, status=dt, main=colnames(tfit)[1],
+         side.main="ENTREZID", counts=lcpm, groups=group, launch=FALSE)
+```
+
+#creates heatmap of the first 100 differentially expressed genes across sample
+```{r}
+library(gplots)
+basal.vs.lp.topgenes <- basal.vs.lp$ENTREZID[1:100]
+i <- which(v$genes$ENTREZID %in% basal.vs.lp.topgenes)
+mycol <- colorpanel(1000,"blue","white","red")
+heatmap.2(lcpm[i,], scale="row",
+   labRow=v$genes$SYMBOL[i], labCol=group, 
+   col=mycol, trace="none", density.info="none", 
+   margin=c(8,6), lhei=c(2,10), dendrogram="column")
+```
+
+#tests the competitive gene set testing and displays the top 5 enriched gene sets
+```{r}
+load(system.file("extdata", "mouse_c2_v5p1.rda", package = "RNAseq123"))
+idx <- ids2indices(Mm.c2,id=rownames(v))
+cam.BasalvsLP <- camera(v,idx,design,contrast=contr.matrix[,1])
+head(cam.BasalvsLP,5)
+```
+
+#runs the gene set enrichment and displays the top 5 genes
+```{r}
+cam.BasalvsML <- camera(v,idx,design,contrast=contr.matrix[,2])
+head(cam.BasalvsML,5)
+```
+
+#runs the gene set enrichment and displays the top 5 genes
+```{r}
+cam.LPvsML <- camera(v,idx,design,contrast=contr.matrix[,3])
+head(cam.LPvsML,5)
+```
+
+#creates a barcode plot showing the t-statistics of the gene sets
+```{r}
+barcodeplot(efit$t[,3], index=idx$LIM_MAMMARY_LUMINAL_MATURE_UP, 
+            index2=idx$LIM_MAMMARY_LUMINAL_MATURE_DN, main="LPvsML")
+```
+
+#Prints the metadata for the current R session
+```{r}
+sessionInfo()
+```
+
+```{r}
+
+```
+
