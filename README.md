@@ -9,6 +9,7 @@ Part 3: This notebook performs single-cell RNA-seq analysis on PBMC (Peripheral 
 
 Qiime2: This project utilizes QIIME 2 to analyze 16S rRNA sequencing data for microbial community profiling. It includes sequence quality control, feature extraction, taxonomic assignment, and diversity analysis.
 
+MetaExercise.txt: A series of practical bioinformatics exercises focused on processing and analyzing metagenomic sequencing data.
 # Example: 
 
 Examples were performed with the test files that are provided.
@@ -18,9 +19,18 @@ Part 1:
 ![BE900370-8AD8-467A-9030-3734CFCD33B0](https://github.com/user-attachments/assets/d22e41e9-ff95-4ceb-9ef4-a57662363f50)
 
 Part 2:
-
 ![7C8F81D1-9EF3-477A-AF9C-D1E67BB5B5CB](https://github.com/user-attachments/assets/7e4569f2-9256-44c3-874b-3b1c533d0183)
 
 Part 3: 
 ![BE900370-8AD8-467A-9030-3734CFCD33B0](https://github.com/user-attachments/assets/1f6b56d2-829c-4cff-b597-ab74a5af26e1)
+
+Fastp: 
+![8800C04E-D5DE-4888-A6C7-2BDCC4DECD7C](https://github.com/user-attachments/assets/4530b522-f685-4147-a1c1-071f8538323d)
+
+Kaiju:
+![9EC2297A-79B2-4C61-99D2-B490BB18D670](https://github.com/user-attachments/assets/72b4ccea-f595-4358-86f8-f9cdaf669296)
+
+SPAdes:
+![0582B641-389D-4C83-B382-4351768A6597](https://github.com/user-attachments/assets/ac427c87-8b0a-4993-adad-7aeab197d8a9)
+
 
