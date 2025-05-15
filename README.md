@@ -10,11 +10,13 @@ Part 3: This notebook performs single-cell RNA-seq analysis on PBMC (Peripheral 
 Qiime2: This project utilizes QIIME 2 to analyze 16S rRNA sequencing data for microbial community profiling. It includes sequence quality control, feature extraction, taxonomic assignment, and diversity analysis.
 
 Example: 
+
 Part 1:
 ![BE900370-8AD8-467A-9030-3734CFCD33B0](https://github.com/user-attachments/assets/d22e41e9-ff95-4ceb-9ef4-a57662363f50)
 
 Part 2:
 
+![7C8F81D1-9EF3-477A-AF9C-D1E67BB5B5CB](https://github.com/user-attachments/assets/7e4569f2-9256-44c3-874b-3b1c533d0183)
 
 Part 3: 
 ![BE900370-8AD8-467A-9030-3734CFCD33B0](https://github.com/user-attachments/assets/1f6b56d2-829c-4cff-b597-ab74a5af26e1)
